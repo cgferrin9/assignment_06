@@ -32,97 +32,126 @@ from .settings import MENTION_CATEGORIES
 
 
 def sentiment_step(reviews: pd.DataFrame, cache_file: str) -> list:
-    """Sentiment for every review, from the cache if it exists, else from the API.
+    if os.path.exists(cache_file):
+        with open(cache_file, "r") as file:
+            return json.load(file)
 
-    Returns a list with one dict per review: the Azure document
-    (`response["results"]["documents"][0]`) with one extra key, `review_id`,
-    copied from the review's row — so every document says which review it is.
+    documents = []
 
-    Steps: if `cache_file` exists, `json.load` it and return it — no API calls.
-    Otherwise start an empty list; for each review (loop over
-    `reviews.to_dict("records")` to get one dict per row) call `get_sentiment` on
-    its `text`, take the document out of the response, set
-    `document["review_id"]`, and append it. Then `json.dump` the list to
-    `cache_file` and return it.
+    for review in reviews.to_dict("records"):
+        response = get_sentiment(review["text"])
+        document = response["results"]["documents"][0]
+        document["review_id"] = review["review_id"]
+        documents.append(document)
 
-    Delete the cache file to force fresh calls. The portal caches too, so a
-    re-run on the same reviews is free either way — but your cache also works
-    offline, and it is what makes the transform steps below fast to debug.
-    """
-    # TODO: your code here
-    pass
+    with open(cache_file, "w") as file:
+        json.dump(documents, file)
+
+    return documents
 
 
 def entities_step(reviews: pd.DataFrame, cache_file: str) -> list:
-    """Named entities for every review, cached — the same shape as `sentiment_step`.
+    if os.path.exists(cache_file):
+        with open(cache_file, "r") as file:
+            return json.load(file)
 
-    One dict per review: the Azure entity-recognition document with `review_id`
-    added. Same cache rule, same loop, `get_entities` instead of `get_sentiment`.
-    """
-    # TODO: your code here
-    pass
+    documents = []
+
+    for review in reviews.to_dict("records"):
+        response = get_entities(review["text"])
+        document = response["results"]["documents"][0]
+        document["review_id"] = review["review_id"]
+        documents.append(document)
+
+    with open(cache_file, "w") as file:
+        json.dump(documents, file)
+
+    return documents
+
 
 
 def sentences_table(documents: list) -> pd.DataFrame:
-    """One row per sentence: the sentiment documents flattened with `json_normalize`.
+    df = pd.json_normalize(
+        documents,
+        record_path="sentences",
+        meta=["review_id"],
+        record_prefix="sentence_"
+    )
 
-    Columns, in this order: `review_id`, `sentence_id`, `sentence_text`,
-    `sentence_sentiment`, `sentence_offset`, `sentence_length`.
+    df["sentence_id"] = df.groupby("review_id").cumcount()
 
-    Steps: `pd.json_normalize(documents, record_path="sentences",
-    meta=["review_id"], record_prefix="sentence_")` gives one row per sentence
-    with every field prefixed — `sentence_text`, `sentence_sentiment`, ... — and
-    the parent's `review_id` copied onto each (lesson 4-1). `sentence_id` is the
-    sentence's position in its review, 0, 1, 2, ...: a group-by on `review_id`
-    and `.cumcount()`. Keep only the six columns above. Strip the trailing space
-    Azure leaves on `sentence_text` with `.str.strip()`.
-    """
-    # TODO: your code here
-    pass
+    df["sentence_text"] = df["sentence_text"].str.strip()
 
+    columns = [
+        "review_id",
+        "sentence_id",
+        "sentence_text",
+        "sentence_sentiment",
+        "sentence_offset",
+        "sentence_length"
+    ]
+
+    return df[columns]
 
 def opinions_table(documents: list) -> pd.DataFrame:
-    """One row per opinion target, with the words that carry the opinion.
+    rows = []
 
-    Columns, in this order: `review_id`, `sentence_id`, `mention`,
-    `mention_sentiment`, `assessments`, `mention_offset`, `source`.
+    for document in documents:
+        for sentence_id, sentence in enumerate(document["sentences"]):
+            for target in sentence["targets"]:
+                assessments = []
 
-    Each sentence in a sentiment document has `targets` and `assessments`. A
-    target ("mocha latte") points at its assessments ("overpriced", "lukewarm")
-    through its `relations` list — each relation has a `relationType` and a
-    `ref` like `"#/documents/0/sentences/1/assessments/0"`. The number after
-    `assessments/` is the assessment's position in that sentence's
-    `assessments` list.
+                for relation in target["relations"]:
+                    if relation["relationType"] == "assessment":
+                        ref = relation["ref"]
+                        index = int(ref.split("/")[-1])
+                        assessment = sentence["assessments"][index]
+                        assessments.append(assessment["text"])
 
-    This one is three levels deep with cross-references, which is past what
-    `json_normalize` does in one call — so build it with nested loops (lesson
-    4-1, "parsing the JSON response"). For each document, for each sentence
-    (`enumerate` gives you `sentence_id`), for each target: collect the text of
-    every assessment its relations point to (only relations whose
-    `relationType` is `"assessment"`), join them with `", "`, and append a row
-    dict. `mention` is the target's `text`, `mention_sentiment` its `sentiment`,
-    `mention_offset` its `offset`, and `source` is always `"opinion"`. Return
-    `pd.DataFrame(rows, columns=[...the seven names...])`, so a set of reviews
-    with no targets still gives a table with the right columns.
-    """
-    # TODO: your code here
-    pass
+                rows.append({
+                    "review_id": document["review_id"],
+                    "sentence_id": sentence_id,
+                    "mention": target["text"],
+                    "mention_sentiment": target["sentiment"],
+                    "assessments": ", ".join(assessments),
+                    "mention_offset": target["offset"],
+                    "source": "opinion"
+                })
+
+    columns = [
+        "review_id",
+        "sentence_id",
+        "mention",
+        "mention_sentiment",
+        "assessments",
+        "mention_offset",
+        "source"
+    ]
+
+    return pd.DataFrame(rows, columns=columns)
 
 
 def entities_table(documents: list) -> pd.DataFrame:
-    """One row per person or product the entity recognizer found.
+    df = pd.json_normalize(
+        documents,
+        record_path="entities",
+        meta=["review_id"],
+        record_prefix="entity_"
+    )
 
-    Columns, in this order: `review_id`, `entity_text`, `entity_category`,
-    `entity_offset`. Only the categories in `MENTION_CATEGORIES` ("Person",
-    "Product"); a plain 0, 1, 2, ... index.
+    df = df[df["entity_category"].isin(MENTION_CATEGORIES)]
 
-    Steps: `json_normalize` again — `record_path="entities"`,
-    `meta=["review_id"]`, `record_prefix="entity_"` — then a boolean index with
-    `.isin(MENTION_CATEGORIES)` on `entity_category`. A document with no
-    entities contributes no rows, which `json_normalize` handles for you.
-    """
-    # TODO: your code here
-    pass
+    columns = [
+        "review_id",
+        "entity_text",
+        "entity_category",
+        "entity_offset"
+    ]
+
+    df = df[columns]
+
+    return df.reset_index(drop=True)
+
 
 
 def subjects_step(reviews: pd.DataFrame, mentions: pd.DataFrame,
