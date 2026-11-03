@@ -43,22 +43,6 @@ MENTION_COLUMNS = ["review_id", "sentence_id", "mention", "mention_sentiment",
 
 def entity_mentions(entities: pd.DataFrame, sentences: pd.DataFrame,
                     opinions: pd.DataFrame) -> pd.DataFrame:
-    """Entities opinion mining missed, as mentions with their sentence's sentiment.
-
-    *(Provided.)* Read it — `build_mentions` stacks its output under
-    `opinions_table`'s, and explore.py shows you what it returns.
-
-    Same seven columns as `opinions_table`. Each entity is placed in the sentence
-    whose span contains it — `sentence_offset <= entity_offset <
-    sentence_offset + sentence_length` — and takes that sentence's
-    `sentence_id` and `sentence_sentiment` (as `mention_sentiment`).
-    `assessments` is `""` and `source` is `"entity"`.
-
-    Leave out an entity when an opinion target in the same review and sentence
-    already covers it: their lowercased texts are equal, or one contains the
-    other ("oat milk" inside "oat milk cortado"). Sorted by `review_id` then
-    `mention_offset`, plain index.
-    """
     if entities.empty:
         return pd.DataFrame(columns=MENTION_COLUMNS)
     placed = pd.merge(entities, sentences, on="review_id")
@@ -98,74 +82,146 @@ def load_aliases() -> dict:
 
 
 def item_name(mention: str, aliases: dict) -> str:
-    """The canonical name for a mention: lowercased, then looked up in the aliases.
+    name = mention.lower().strip()
+    return aliases.get(name, name)
 
-        item_name("Parking downtown", aliases)  ->  "parking"
-        item_name("Mocha Latte", aliases)        ->  "mocha latte"   # not an alias
-    """
-    # TODO: your code here
-    pass
+
 
 
 def build_mentions(reviews: pd.DataFrame, sentences: pd.DataFrame,
                    opinions: pd.DataFrame, entity_rows: pd.DataFrame,
                    subjects: pd.DataFrame, aliases: dict) -> pd.DataFrame:
-    """Everything together: one row per mention, with its subject, sentence and review.
 
-    Columns, in this order: `review_id`, `date`, `location`, `stars`, `item`,
-    `mention`, `subject`, `mention_sentiment`, `assessments`, `sentence_text`,
-    `source`, `subject_confidence`.
+    combined = pd.concat([opinions, entity_rows], ignore_index=True)
 
-    `opinions` and `entity_rows` stacked (`pd.concat`), then merged with
-    `subjects` on (`review_id`, `mention`), `sentences` on (`review_id`,
-    `sentence_id`) and `reviews` on `review_id`. `item` is `item_name` of the
-    mention. Rows whose subject is `"other"` are dropped, and so is a second
-    mention of the same item in the same sentence ("oat milk" and "oat milk
-    cortado" both becoming "oat milk cortado"). Sorted by `review_id` then
-    `mention_offset`, plain index.
-    """
-    # TODO: your code here
-    pass
+    combined = pd.merge(
+        combined, subjects,
+        on=["review_id", "mention"],
+        how="left"
+    )
+
+    combined = pd.merge(
+        combined, sentences,
+        on=["review_id", "sentence_id"],
+        how="left"
+    )
+
+    combined = pd.merge(
+        combined, reviews,
+        on="review_id",
+        how="left"
+    )
+
+    combined["item"] = combined["mention"].apply(
+        lambda x: item_name(x, aliases)
+    )
+
+    combined = combined[combined["subject"] != "other"]
+
+    combined = combined.sort_values(
+        ["review_id", "mention_offset"]
+    )
+
+    combined = combined.drop_duplicates(
+        subset=["review_id", "sentence_id", "item"]
+    )
+
+    columns = [
+        "review_id",
+        "date",
+        "location",
+        "stars",
+        "item",
+        "mention",
+        "subject",
+        "mention_sentiment",
+        "assessments",
+        "sentence_text",
+        "source",
+        "subject_confidence"
+    ]
+
+    return combined[columns].reset_index(drop=True)
+
 
 
 def analyze_reviews(reviews_file: str) -> pd.DataFrame:
-    """The whole pipeline for one reviews file: raw CSV in, `mentions` out.
+    reviews = pd.read_csv(reviews_file)
 
-    Reads the CSV, runs `sentiment_step` and `entities_step` (cached with
-    `cache_path(reviews_file, "sentiment")` and `"entities"`), builds the three
-    tables, `entity_mentions`, then `subjects_step` on the combined mentions
-    (cached with `cache_path(reviews_file, "subjects", "csv")`), and finally
-    `build_mentions` with `load_aliases()`. Call the functions; do not redo them.
-    """
-    # TODO: your code here
-    pass
+    documents = sentiment_step(
+        reviews, cache_path(reviews_file, "sentiment")
+    )
+
+    entity_documents = entities_step(
+        reviews, cache_path(reviews_file, "entities")
+    )
+
+    sentences = sentences_table(documents)
+    opinions = opinions_table(documents)
+    entities = entities_table(entity_documents)
+
+    entity_rows = entity_mentions(
+        entities, sentences, opinions
+    )
+
+    combined = pd.concat(
+        [opinions, entity_rows], ignore_index=True
+    )
+
+    subjects = subjects_step(
+        reviews,
+        combined,
+        cache_path(reviews_file, "subjects", "csv")
+    )
+
+    mentions = build_mentions(
+        reviews,
+        sentences,
+        opinions,
+        entity_rows,
+        subjects,
+        load_aliases()
+    )
+
+    return mentions
+
 
 
 def summarize_items(mentions: pd.DataFrame) -> pd.DataFrame:
-    """Most-discussed items: one row per (subject, item).
+    table = pd.pivot_table(
+        mentions,
+        index=["subject", "item"],
+        columns="mention_sentiment",
+        aggfunc="size",
+        fill_value=0
+    )
 
-    Columns: `subject`, `item`, `mentions` (how many rows), `positive`,
-    `negative` (how many of those rows have that `mention_sentiment`), and `net`
-    (positive minus negative). Sorted by `mentions` descending, then `item`;
-    plain index.
+    table["mentions"] = table.sum(axis=1)
 
-    How to build it — a pivot table, as in Assignment 05, then one engineered
-    column:
+    table["positive"] = table.get("positive", 0)
+    table["negative"] = table.get("negative", 0)
 
-    - `pd.pivot_table` with `index=["subject", "item"]`,
-      `columns="mention_sentiment"`, `aggfunc="size"` and `fill_value=0`: one
-      row per item, one column of counts per sentiment.
-    - `mentions` is each row's total across those columns (`.sum(axis=1)`).
-    - `positive` and `negative` are two of the columns — but a sentiment that
-      never appears gets no column (filter the page to one location and there
-      may be no complaints at all). `table.get("negative", 0)` gives the column,
-      or 0 when there isn't one.
-    - **Engineer** `net` = `positive` - `negative`: one number that says whether
-      an item is loved or a problem.
-    """
-    # TODO: your code here
-    pass
+    table["net"] = table["positive"] - table["negative"]
 
+    table = table.reset_index()
+
+    columns = [
+        "subject",
+        "item",
+        "mentions",
+        "positive",
+        "negative",
+        "net"
+    ]
+
+    table = table[columns]
+
+    table = table.sort_values(
+        ["mentions", "item"],
+        ascending=[False, True]
+    )
+
+    return table.reset_index(drop=True)
 
 # --- The Q&A box --------------------------------------------------------------------
 
@@ -248,36 +304,45 @@ def describe_scope(scope: dict) -> str:
     return " · ".join(parts) if parts else "all reviews"
 
 
+
 def build_messages(question: str, evidence: pd.DataFrame, limit: int = 20) -> list:
-    """The conversation for `ask_llm`: a system prompt, then question and evidence.
+    total = len(evidence)
+    positive = (evidence["mention_sentiment"] == "positive").sum()
+    negative = (evidence["mention_sentiment"] == "negative").sum()
+    neutral = total - positive - negative
 
-    Returns a list of two dicts:
+    lines = [
+        f"Question: {question}",
+        f"Facts: {total} mentions — {positive} positive, {negative} negative, {neutral} neutral or mixed.",
+        "Items, most mentioned first:"
+    ]
 
-        {"role": "system", "content": SYSTEM_PROMPT}
-        {"role": "user",   "content": <the text below>}
+    summary = summarize_items(evidence)
 
-    The user content is, line by line:
+    for row in summary.to_dict("records"):
+        lines.append(
+            f"- {row['item']} ({row['subject']}): "
+            f"{row['mentions']} mentions, "
+            f"{row['positive']} positive, "
+            f"{row['negative']} negative, "
+            f"net {row['net']:+d}"
+        )
 
-        Question: <question>
-        Facts: <n> mentions — <p> positive, <q> negative, <r> neutral or mixed.
-        Items, most mentioned first:
-        - <item> (<subject>): <m> mentions, <pos> positive, <neg> negative, net <net>
-        - ...
-        Review sentences:
-        - (<location>, <date>, <item>, <mention_sentiment>) <sentence_text>
-        - ...
+    lines.append("Review sentences:")
 
-    One item line per row of `summarize_items(evidence)`, in its order: `<m>`,
-    `<pos>`, `<neg>` and `<net>` are its `mentions`, `positive`, `negative` and
-    `net` columns, with net written with its sign (`f"{net:+d}"` -> "+3", "-2",
-    "+0"). One sentence line per evidence row, at most `limit` of them. The counts cover
-    every row, so "what is the most popular product?" is answered from the
-    whole table, not from whichever sentences fit. pandas does the counting; the
-    language model only writes the answer. Language models are bad at counting
-    and good at prose — give each the job it is good at.
-    """
-    # TODO: your code here
-    pass
+    for row in evidence.head(limit).to_dict("records"):
+        lines.append(
+            f"- ({row['location']}, {row['date']}, "
+            f"{row['item']}, {row['mention_sentiment']}) "
+            f"{row['sentence_text']}"
+        )
+
+    user_content = "\n".join(lines)
+
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_content}
+    ]
 
 
 def answer_question(question: str, mentions: pd.DataFrame, aliases: dict):

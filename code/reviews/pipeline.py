@@ -154,24 +154,52 @@ def entities_table(documents: list) -> pd.DataFrame:
 
 
 
+
 def subjects_step(reviews: pd.DataFrame, mentions: pd.DataFrame,
                   cache_file: str) -> pd.DataFrame:
-    """What each mention is about — service, atmosphere, product, other — cached.
 
-    Returns one row per (review, mention) with columns `review_id`, `mention`,
-    `subject`, `subject_confidence`.
+    if os.path.exists(cache_file):
+        return pd.read_csv(cache_file)
 
-    Steps: if `cache_file` exists, `pd.read_csv` it and return it. Otherwise, for
-    each review that has mentions: take its mentions in order of
-    `mention_offset`, without repeats (`.drop_duplicates()` keeps the first),
-    and call `classify_mentions(review_text, that_list)`. The answers come back
-    keyed by mention: `response["answers"][mention]["choice"]` and
-    `["confidence"]`. Append one row dict per mention. Build the DataFrame,
-    `to_csv(cache_file, index=False)`, and return it.
+    rows = []
 
-    Always send the mentions in offset order: the portal only answers from its
-    cache when the request is exactly the same, so the same reviews must
-    produce the same list every time.
-    """
-    # TODO: your code here
-    pass
+    for review in reviews.to_dict("records"):
+        review_id = review["review_id"]
+
+        review_mentions = mentions[
+            mentions["review_id"] == review_id
+        ]
+
+        if review_mentions.empty:
+            continue
+
+        mention_list = (
+            review_mentions
+            .sort_values("mention_offset")["mention"]
+            .drop_duplicates()
+            .tolist()
+        )
+
+        response = classify_mentions(review["text"], mention_list)
+
+        for mention in mention_list:
+            answer = response["answers"][mention]
+
+            rows.append({
+                "review_id": review_id,
+                "mention": mention,
+                "subject": answer["choice"],
+                "subject_confidence": answer["confidence"]
+            })
+
+    columns = [
+        "review_id",
+        "mention",
+        "subject",
+        "subject_confidence"
+    ]
+
+    df = pd.DataFrame(rows, columns=columns)
+    df.to_csv(cache_file, index=False)
+
+    return df
