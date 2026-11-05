@@ -45,7 +45,6 @@ def entities_step(reviews: pd.DataFrame, cache_file: str) -> list:
     return documents
 
 
-
 def sentences_table(documents: list) -> pd.DataFrame:
     df = pd.json_normalize(
         documents,
@@ -68,6 +67,7 @@ def sentences_table(documents: list) -> pd.DataFrame:
     ]
 
     return df[columns]
+
 
 def opinions_table(documents: list) -> pd.DataFrame:
     rows = []
@@ -127,8 +127,6 @@ def entities_table(documents: list) -> pd.DataFrame:
     df = df[columns]
 
     return df.reset_index(drop=True)
-
-
 
 
 def subjects_step(reviews: pd.DataFrame, mentions: pd.DataFrame,

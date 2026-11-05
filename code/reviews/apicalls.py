@@ -26,7 +26,6 @@ def get_entities(text: str) -> dict:
     return response.json()
 
 
-
 def classify_mentions(review_text: str, mentions: list) -> dict:
     url = f"{BASE_URL}/api/ollama/systemone"
     headers = {"X-API-KEY": get_api_key()}
