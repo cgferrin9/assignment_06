@@ -19,7 +19,9 @@ def get_sentiment(text: str) -> dict:
     return response.json()
 
 
+
 def get_entities(text: str) -> dict:
+    """Identify named entities in text using the Azure API."""
     url = f"{BASE_URL}/api/azure/entityrecognition"
     headers = {"X-API-KEY": get_api_key()}
     response = requests.post(url, headers=headers, data={"text": text})
@@ -28,6 +30,7 @@ def get_entities(text: str) -> dict:
 
 
 def classify_mentions(review_text: str, mentions: list) -> dict:
+    """Classify mentions in a review using the decision model."""
     url = f"{BASE_URL}/api/ollama/systemone"
     headers = {"X-API-KEY": get_api_key()}
 
@@ -42,6 +45,7 @@ def classify_mentions(review_text: str, mentions: list) -> dict:
 
 
 def ask_llm(messages: list) -> str:
+    """Send messages to the language model and return its response."""
     url = f"{BASE_URL}/api/azure/foundry/chat/completions"
     headers = {"X-API-KEY": get_api_key()}
 
