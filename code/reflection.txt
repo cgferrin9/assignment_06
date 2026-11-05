@@ -5,3 +5,19 @@ terminology from this assignment (REST API, endpoint, HTTP status code,
 raise_for_status, API key, form data vs. JSON body, rate limit, caching,
 json_normalize, record_path, meta, grain, opinion mining, named-entity
 recognition, prompt, system prompt, reasoning model), and make it actionable.
+
+Throughout this assignment, I learned how to use REST APIs to collect
+and analyze data in Python. One of my biggest takeaways was understanding
+how API endpoints work, including the difference between sending 
+form data and a JSON body. I also learned the importance of API keys, 
+caching, and `raise_for_status()` when working with HTTP requests.
+
+One part I found challenging was working with nested JSON data
+and using `json_normalize()` to turn it into DataFrames. 
+I also found debugging my code challenging, especially when dealing
+with indentation and formatting errors. Overall, this assignment 
+helped me better understand how APIs, opinion mining, and named-entity 
+recognition can be used to analyze customer feedback. 
+Moving forward, I want to practice working with APIs
+more independently and apply these skills to future 
+data analytics projects.
