@@ -1,3 +1,4 @@
+
 import json
 import os
 
@@ -8,6 +9,7 @@ from .settings import MENTION_CATEGORIES
 
 
 def sentiment_step(reviews: pd.DataFrame, cache_file: str) -> list:
+    """Retrieve sentiment analysis for each review and cache the JSON results."""
     if os.path.exists(cache_file):
         with open(cache_file, "r") as file:
             return json.load(file)
@@ -27,6 +29,7 @@ def sentiment_step(reviews: pd.DataFrame, cache_file: str) -> list:
 
 
 def entities_step(reviews: pd.DataFrame, cache_file: str) -> list:
+    """Retrieve named entities for each review and cache the JSON results."""
     if os.path.exists(cache_file):
         with open(cache_file, "r") as file:
             return json.load(file)
@@ -46,6 +49,7 @@ def entities_step(reviews: pd.DataFrame, cache_file: str) -> list:
 
 
 def sentences_table(documents: list) -> pd.DataFrame:
+    """Flatten sentiment JSON into a DataFrame with one row per sentence."""
     df = pd.json_normalize(
         documents,
         record_path="sentences",
@@ -70,6 +74,7 @@ def sentences_table(documents: list) -> pd.DataFrame:
 
 
 def opinions_table(documents: list) -> pd.DataFrame:
+    """Extract opinion targets and their assessments into a DataFrame."""
     rows = []
 
     for document in documents:
@@ -108,6 +113,7 @@ def opinions_table(documents: list) -> pd.DataFrame:
 
 
 def entities_table(documents: list) -> pd.DataFrame:
+    """Create a DataFrame containing recognized people and products."""
     df = pd.json_normalize(
         documents,
         record_path="entities",
@@ -131,7 +137,7 @@ def entities_table(documents: list) -> pd.DataFrame:
 
 def subjects_step(reviews: pd.DataFrame, mentions: pd.DataFrame,
                   cache_file: str) -> pd.DataFrame:
-
+    """Classify review mentions by subject and cache the results in a CSV."""
     if os.path.exists(cache_file):
         return pd.read_csv(cache_file)
 

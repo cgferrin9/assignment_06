@@ -1,3 +1,4 @@
+
 import pandas as pd
 
 from .apicalls import get_entities
@@ -18,14 +19,23 @@ from .settings import (
     cache_path,
 )
 
-MENTION_COLUMNS = ["review_id", "sentence_id", "mention", "mention_sentiment",
-                   "assessments", "mention_offset", "source"]
+MENTION_COLUMNS = [
+    "review_id",
+    "sentence_id",
+    "mention",
+    "mention_sentiment",
+    "assessments",
+    "mention_offset",
+    "source",
+]
 
 
 def entity_mentions(entities: pd.DataFrame, sentences: pd.DataFrame,
                     opinions: pd.DataFrame) -> pd.DataFrame:
+    """Identify entities not already captured by opinion mining."""
     if entities.empty:
         return pd.DataFrame(columns=MENTION_COLUMNS)
+
     placed = pd.merge(entities, sentences, on="review_id")
     inside = (placed["entity_offset"] >= placed["sentence_offset"]) & (
         placed["entity_offset"] < placed["sentence_offset"] + placed["sentence_length"]
@@ -44,6 +54,7 @@ def entity_mentions(entities: pd.DataFrame, sentences: pd.DataFrame,
         return any(text in target or target in text for target in targets)
 
     keep = placed[~placed.apply(is_covered, axis=1)] if len(placed) else placed
+
     rows = pd.DataFrame({
         "review_id": keep["review_id"],
         "sentence_id": keep["sentence_id"],
@@ -53,16 +64,20 @@ def entity_mentions(entities: pd.DataFrame, sentences: pd.DataFrame,
         "mention_offset": keep["entity_offset"],
         "source": "entity",
     }, columns=MENTION_COLUMNS)
-    return rows.sort_values(["review_id", "mention_offset"]).reset_index(drop=True)
+
+    return rows.sort_values(
+        ["review_id", "mention_offset"]
+    ).reset_index(drop=True)
 
 
 def load_aliases() -> dict:
-    """data/aliases.csv as a dict: alternate spelling -> the item's one name."""
+    """Load alternate item spellings from a CSV into a dictionary."""
     aliases = pd.read_csv(ALIASES_FILE)
     return dict(zip(aliases["alias"].str.lower(), aliases["item"]))
 
 
 def item_name(mention: str, aliases: dict) -> str:
+    """Standardize mention names using lowercase text and aliases."""
     name = mention.lower().strip()
     return aliases.get(name, name)
 
@@ -70,25 +85,28 @@ def item_name(mention: str, aliases: dict) -> str:
 def build_mentions(reviews: pd.DataFrame, sentences: pd.DataFrame,
                    opinions: pd.DataFrame, entity_rows: pd.DataFrame,
                    subjects: pd.DataFrame, aliases: dict) -> pd.DataFrame:
-
+    """Combine reviews, opinions, entities, and subjects into one DataFrame."""
     combined = pd.concat([opinions, entity_rows], ignore_index=True)
 
     combined = pd.merge(
-        combined, subjects,
+        combined,
+        subjects,
         on=["review_id", "mention"],
-        how="left"
+        how="left",
     )
 
     combined = pd.merge(
-        combined, sentences,
+        combined,
+        sentences,
         on=["review_id", "sentence_id"],
-        how="left"
+        how="left",
     )
 
     combined = pd.merge(
-        combined, reviews,
+        combined,
+        reviews,
         on="review_id",
-        how="left"
+        how="left",
     )
 
     combined["item"] = combined["mention"].apply(
@@ -117,13 +135,14 @@ def build_mentions(reviews: pd.DataFrame, sentences: pd.DataFrame,
         "assessments",
         "sentence_text",
         "source",
-        "subject_confidence"
+        "subject_confidence",
     ]
 
     return combined[columns].reset_index(drop=True)
 
 
 def analyze_reviews(reviews_file: str) -> pd.DataFrame:
+    """Run the complete review pipeline and return customer mentions."""
     reviews = pd.read_csv(reviews_file)
 
     documents = sentiment_step(
@@ -165,12 +184,13 @@ def analyze_reviews(reviews_file: str) -> pd.DataFrame:
 
 
 def summarize_items(mentions: pd.DataFrame) -> pd.DataFrame:
+    """Summarize item mentions and calculate positive, negative, and net counts."""
     table = pd.pivot_table(
         mentions,
         index=["subject", "item"],
         columns="mention_sentiment",
         aggfunc="size",
-        fill_value=0
+        fill_value=0,
     )
 
     table["mentions"] = table.sum(axis=1)
@@ -188,7 +208,7 @@ def summarize_items(mentions: pd.DataFrame) -> pd.DataFrame:
         "mentions",
         "positive",
         "negative",
-        "net"
+        "net",
     ]
 
     table = table[columns]
@@ -200,54 +220,83 @@ def summarize_items(mentions: pd.DataFrame) -> pd.DataFrame:
 
     return table.reset_index(drop=True)
 
-# --- The Q&A box --------------------------------------------------------------------
+
+# --- The Q&A box ---------------------------------------------------------
 
 
 def question_scope(question: str, entity_document: dict, mentions: pd.DataFrame,
                    aliases: dict) -> dict:
+    """Identify items, locations, and subjects mentioned in a question."""
     lowered = question.lower()
+
     candidates = [
         item_name(entity["text"], aliases)
         for entity in entity_document["entities"]
         if entity["category"] in MENTION_CATEGORIES
     ]
+
     known = sorted(mentions["item"].unique())
     candidates += [item for item in known if item.lower() in lowered]
+
     items = []
     for item in candidates:
         if item not in items:
             items.append(item)
 
     def named(word_lists: dict) -> list:
-        """The keys with at least one of their words in the question."""
-        return [name for name, words in word_lists.items()
-                if any(word in lowered for word in words)]
+        """Return keys with at least one matching word in the question."""
+        return [
+            name for name, words in word_lists.items()
+            if any(word in lowered for word in words)
+        ]
 
-    return {"items": items, "locations": named(LOCATION_WORDS),
-            "subjects": named(SUBJECT_WORDS)}
+    return {
+        "items": items,
+        "locations": named(LOCATION_WORDS),
+        "subjects": named(SUBJECT_WORDS),
+    }
 
 
-SCOPE_COLUMNS = {"items": "item", "subjects": "subject", "locations": "location"}
+SCOPE_COLUMNS = {
+    "items": "item",
+    "subjects": "subject",
+    "locations": "location",
+}
 
 
 def evidence_for(mentions: pd.DataFrame, scope: dict) -> pd.DataFrame:
+    """Filter customer mentions to find evidence relevant to a question."""
     selected = mentions
+
     if scope["items"] or scope["subjects"]:
-        what = (mentions["item"].isin(scope["items"])
-                | mentions["subject"].isin(scope["subjects"]))
+        what = (
+            mentions["item"].isin(scope["items"])
+            | mentions["subject"].isin(scope["subjects"])
+        )
         selected = selected[what]
+
     if scope["locations"]:
-        selected = selected[selected["location"].isin(scope["locations"])]
+        selected = selected[
+            selected["location"].isin(scope["locations"])
+        ]
+
     return selected.reset_index(drop=True)
 
 
 def describe_scope(scope: dict) -> str:
-    """A scope in words, for the page: "mocha latte · Westcott", or "all reviews"."""
-    parts = [", ".join(scope[key]) for key in SCOPE_COLUMNS if scope[key]]
+    """Describe the question scope in words for the app."""
+    parts = [
+        ", ".join(scope[key])
+        for key in SCOPE_COLUMNS
+        if scope[key]
+    ]
+
     return " · ".join(parts) if parts else "all reviews"
 
 
-def build_messages(question: str, evidence: pd.DataFrame, limit: int = 20) -> list:
+def build_messages(question: str, evidence: pd.DataFrame,
+                   limit: int = 20) -> list:
+    """Prepare review statistics and evidence as messages for the AI model."""
     total = len(evidence)
     positive = (evidence["mention_sentiment"] == "positive").sum()
     negative = (evidence["mention_sentiment"] == "negative").sum()
@@ -257,7 +306,7 @@ def build_messages(question: str, evidence: pd.DataFrame, limit: int = 20) -> li
         f"Question: {question}",
         f"Facts: {total} mentions — {positive} positive, "
         f"{negative} negative, {neutral} neutral or mixed.",
-        "Items, most mentioned first:"
+        "Items, most mentioned first:",
     ]
 
     summary = summarize_items(evidence)
@@ -284,12 +333,12 @@ def build_messages(question: str, evidence: pd.DataFrame, limit: int = 20) -> li
 
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_content}
+        {"role": "user", "content": user_content},
     ]
 
 
 def answer_question(question: str, mentions: pd.DataFrame, aliases: dict):
-    """What a question is about and the evidence for it: (scope, evidence)."""
+    """Identify a question's scope and return the relevant review evidence."""
     document = get_entities(question)["results"]["documents"][0]
     scope = question_scope(question, document, mentions, aliases)
     return scope, evidence_for(mentions, scope)
