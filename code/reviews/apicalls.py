@@ -19,7 +19,6 @@ def get_sentiment(text: str) -> dict:
     return response.json()
 
 
-
 def get_entities(text: str) -> dict:
     """Identify named entities in text using the Azure API."""
     url = f"{BASE_URL}/api/azure/entityrecognition"
