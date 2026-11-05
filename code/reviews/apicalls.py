@@ -11,6 +11,7 @@ from .settings import (
 
 
 def get_sentiment(text: str) -> dict:
+    """Analyze the sentiment of text using the Azure API."""
     url = f"{BASE_URL}/api/azure/sentiment"
     headers = {"X-API-KEY": get_api_key()}
     response = requests.post(url, headers=headers, data={"text": text})
