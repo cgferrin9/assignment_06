@@ -1,23 +1,3 @@
-"""
-apicalls.py — Step 1: one function per API endpoint.
-
-Every function here does the same four things, the algorithm from lesson 4-1:
-
-    1. build the URL from BASE_URL and the endpoint's path
-    2. send the request with your key in the X-API-KEY header
-    3. response.raise_for_status() — turn a 4xx/5xx into an exception, right here
-    4. return response.json()
-
-`raise_for_status()` is the line people leave out, and it is the one that saves
-you an hour: without it, a bad key or a typo in the path comes back as a
-perfectly normal-looking dictionary of error text, and your code fails three
-steps later with a KeyError that points nowhere near the real problem.
-
-These functions do not loop, do not build DataFrames, and do not cache. They make
-one call and hand back what the API said. Everything else is Step 2's job.
-
-This step is walked through line by line. The next two steps give you less.
-"""
 
 import requests
 

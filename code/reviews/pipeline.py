@@ -1,27 +1,3 @@
-"""
-pipeline.py — Step 2: call the APIs once, cache what they say, flatten it into tables.
-
-A pipeline built on someone else's API has two kinds of step, and keeping them
-apart is the whole design:
-
-- **Extract steps** call the API — slow, rate-limited, and the only part that can
-  fail because of the network. Each one saves the raw JSON it got back to a cache
-  file, and the next time it runs it reads that file instead of calling again.
-  (Lesson 4-2: cache every call you can.)
-- **Transform steps** turn that JSON into DataFrames. They never touch the
-  network, so you can run them a hundred times while you get them right.
-
-    reviews ─sentiment_step─▶ sentiment JSON ─sentences_table─▶ a row per sentence
-                                            └opinions_table──▶ a row per target
-    reviews ─entities_step──▶ entities JSON ─entities_table──▶ a row per entity
-    mentions ─subjects_step─▶ a row per mention, with its subject
-
-Each arrow changes the **grain** — review, sentence, target, entity — the idea
-from Assignment 05, now coming out of JSON instead of a CSV.
-
-Less scaffolding here: the steps are described, the code is yours.
-"""
-
 import json
 import os
 

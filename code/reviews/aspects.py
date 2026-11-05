@@ -1,22 +1,3 @@
-"""
-aspects.py — Step 3: from API output to "what are people saying about what".
-
-The tables from Step 2 each know one thing. This step puts them together into
-`mentions` — one row per thing a customer had an opinion about — and then asks
-the questions the owner cares about.
-
-Two sources of mentions, because each API catches what the other misses:
-
-- **Opinion targets** (Azure opinion mining): "the mocha latte was overpriced" —
-  a target, its own sentiment, and the words behind it. The best evidence.
-- **Named entities** (Azure NER): "Otto always says hi" has no opinion words for
-  opinion mining to latch onto, but the entity recognizer knows Otto is a
-  Person. These mentions borrow their sentence's sentiment.
-
-No walkthrough. The docstrings state what each function returns; `tests/` says
-how it is checked.
-"""
-
 import pandas as pd
 
 from .apicalls import get_entities
@@ -228,33 +209,6 @@ def summarize_items(mentions: pd.DataFrame) -> pd.DataFrame:
 
 def question_scope(question: str, entity_document: dict, mentions: pd.DataFrame,
                    aliases: dict) -> dict:
-    """What a question is about: its items, locations and subjects. *(Provided.)*
-
-    Read this one rather than write it — it is how the Q&A box decides what to
-    look up, and README Reference #8 walks through why it works this way.
-
-    Returns a dict with three lists, any of which may be empty:
-
-        {"items": [...], "locations": [...], "subjects": [...]}
-
-    `entity_document` is `get_entities(question)["results"]["documents"][0]`.
-
-    - **items**: its Person and Product entities, put through `item_name` —
-      kept even when no review mentions them, so "chai latte" is in the scope
-      of a question about it — then every item in `mentions["item"]` whose
-      lowercased name appears in the lowercased question (entity recognition
-      does not know that "wifi" or "parking" are things). No repeats,
-      entities first.
-    - **locations**: each location in `LOCATION_WORDS` with any of its words in
-      the lowercased question, in `LOCATION_WORDS` order.
-    - **subjects**: the same, with `SUBJECT_WORDS`.
-
-        question_scope("Do people like the mocha latte?", ...)
-            -> {"items": ["mocha latte"], "locations": [], "subjects": []}
-        question_scope("How is the staff at Armory Square?", ...)
-            -> {"items": [], "locations": ["Armory Square"],
-                "subjects": ["customer service"]}
-    """
     lowered = question.lower()
     candidates = [
         item_name(entity["text"], aliases)
@@ -281,13 +235,6 @@ SCOPE_COLUMNS = {"items": "item", "subjects": "subject", "locations": "location"
 
 
 def evidence_for(mentions: pd.DataFrame, scope: dict) -> pd.DataFrame:
-    """The mentions inside a question's scope — the rows the answer is built from.
-
-    Items and subjects say *what* the question is about, so a row matches when
-    its item is one of the items **or** its subject is one of the subjects.
-    Locations say *where*, and narrow that further. An empty list does not
-    filter, so a question that names nothing gets every mention.
-    """
     selected = mentions
     if scope["items"] or scope["subjects"]:
         what = (mentions["item"].isin(scope["items"])
