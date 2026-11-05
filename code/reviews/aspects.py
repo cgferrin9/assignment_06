@@ -38,6 +38,7 @@ def entity_mentions(entities: pd.DataFrame, sentences: pd.DataFrame,
         covered.setdefault(key, []).append(row["mention"].lower())
 
     def is_covered(row) -> bool:
+        """True when an opinion target in the same sentence names this entity."""
         text = row["entity_text"].lower()
         targets = covered.get((row["review_id"], row["sentence_id"]), [])
         return any(text in target or target in text for target in targets)
@@ -56,6 +57,7 @@ def entity_mentions(entities: pd.DataFrame, sentences: pd.DataFrame,
 
 
 def load_aliases() -> dict:
+    """data/aliases.csv as a dict: alternate spelling -> the item's one name."""
     aliases = pd.read_csv(ALIASES_FILE)
     return dict(zip(aliases["alias"].str.lower(), aliases["item"]))
 
@@ -198,6 +200,7 @@ def summarize_items(mentions: pd.DataFrame) -> pd.DataFrame:
 
     return table.reset_index(drop=True)
 
+# --- The Q&A box --------------------------------------------------------------------
 
 
 def question_scope(question: str, entity_document: dict, mentions: pd.DataFrame,
@@ -216,6 +219,7 @@ def question_scope(question: str, entity_document: dict, mentions: pd.DataFrame,
             items.append(item)
 
     def named(word_lists: dict) -> list:
+        """The keys with at least one of their words in the question."""
         return [name for name, words in word_lists.items()
                 if any(word in lowered for word in words)]
 
@@ -238,6 +242,7 @@ def evidence_for(mentions: pd.DataFrame, scope: dict) -> pd.DataFrame:
 
 
 def describe_scope(scope: dict) -> str:
+    """A scope in words, for the page: "mocha latte · Westcott", or "all reviews"."""
     parts = [", ".join(scope[key]) for key in SCOPE_COLUMNS if scope[key]]
     return " · ".join(parts) if parts else "all reviews"
 
@@ -284,6 +289,7 @@ def build_messages(question: str, evidence: pd.DataFrame, limit: int = 20) -> li
 
 
 def answer_question(question: str, mentions: pd.DataFrame, aliases: dict):
+    """What a question is about and the evidence for it: (scope, evidence)."""
     document = get_entities(question)["results"]["documents"][0]
     scope = question_scope(question, document, mentions, aliases)
     return scope, evidence_for(mentions, scope)
